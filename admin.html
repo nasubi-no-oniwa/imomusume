@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>芋娘 管理画面</title>
+<meta name="robots" content="noindex">
+<style>
+body{margin:0;background:#2a2418;color:#fff;font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",Meiryo,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:22px;color:#f5d66a}
+.box{background:#3a2f1f;border:2px solid #c9a15a;border-radius:12px;padding:12px;margin:12px 0}
+code{background:#000;padding:4px 8px;border-radius:6px;font-size:13px;word-break:break-all;-webkit-user-select:all;user-select:all}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:6px;border-bottom:1px solid rgba(255,255,255,.1)}
+tr.hid{opacity:.45}
+button{border:none;border-radius:8px;padding:6px 10px;font-weight:bold;font-family:inherit}
+.hide{background:#d0342c;color:#fff}.show{background:#5a4a33;color:#fff}
+a{color:#8fc6ff}
+.msg{color:#ffb3a8}
+</style>
+<script src="config.js"></script>
+</head>
+<body><main>
+<h1>芋娘 管理画面</h1>
+<div class="box">
+  <div>この画面の管理用ID：</div><p><code id="uid">読みこみ中…</code></p>
+  <div style="font-size:13px;line-height:1.7">はじめての時だけ：Firebase の Realtime Database で、<b>imo_admin</b> の下に <b>uid</b> を作り、値に上のIDを入れてください。<br>（このブラウザのデータを消すとIDが変わります。そのときは入れなおしてください）</div>
+</div>
+<div class="box">
+  <div style="display:flex;justify-content:space-between;align-items:center"><b>記録（上位100）</b><button class="show" id="reload">読みなおす</button></div>
+  <p class="msg" id="msg"></p>
+  <table id="tbl"></table>
+</div>
+</main>
+<script>
+const FB=window.IMO_FB||{},DBU=String(FB.databaseURL||'').replace(/\/$/,'');
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch(_){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}}
+async function auth(){let a=lsGet('imo_auth');if(a&&a.exp>Date.now()+60000)return a;
+  if(a&&a.refresh){const r=await fetch('https://securetoken.googleapis.com/v1/token?key='+FB.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(a.refresh)});
+    if(r.ok){const j=await r.json();a={uid:j.user_id,token:j.id_token,refresh:j.refresh_token,exp:Date.now()+(+j.expires_in)*1000};lsSet('imo_auth',a);return a}}
+  const r=await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+FB.apiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
+  if(!r.ok)throw new Error('ログインできませんでした（匿名ログインが有効か確認）');const j=await r.json();a={uid:j.localId,token:j.idToken,refresh:j.refreshToken,exp:Date.now()+(+j.expiresIn)*1000};lsSet('imo_auth',a);return a}
+const RANKS=[[0,'二等兵'],[3,'一等兵'],[6,'上等兵'],[10,'兵長'],[14,'伍長'],[18,'軍曹'],[22,'曹長'],[26,'少尉'],[30,'大尉'],[35,'少佐'],[40,'大佐'],[50,'芋将軍']];
+const rankOf=n=>{let r=RANKS[0][1];for(const [k,v] of RANKS)if(n>=k)r=v;return r};
+async function load(){const msg=document.getElementById('msg');msg.textContent='';
+  try{
+    if(!FB.apiKey||!FB.databaseURL)throw new Error('config.js に apiKey と databaseURL が入っていません');
+    const a=await auth();document.getElementById('uid').textContent=a.uid;
+    const [sc,hd]=await Promise.all([fetch(DBU+'/imo/scores.json?orderBy=%22s%22&limitToLast=100').then(r=>r.json()),fetch(DBU+'/imo/hidden.json').then(r=>r.json())]);
+    const list=Object.entries(sc||{}).map(([u,v])=>Object.assign({u},v)).sort((x,y)=>y.s-x.s||x.t-y.t);
+    document.getElementById('tbl').innerHTML=list.map((r,i)=>{const h=hd&&hd[r.u];return `<tr class="${h?'hid':''}"><td>${i+1}</td><td>${esc(r.n)}${r.x?`<br><a href="https://x.com/${esc(r.x)}" target="_blank">@${esc(r.x)}</a>`:''}<br><small>${new Date(r.t).toLocaleString('ja-JP')}</small></td><td><b>${r.s}</b>個<br><small>${rankOf(r.s)}・コンボ${r.c}</small></td><td><a href="./?replay=${encodeURIComponent(r.u)}" target="_blank">再生</a></td><td>${h?`<button class="show" data-u="${esc(r.u)}" data-h="0">戻す</button>`:`<button class="hide" data-u="${esc(r.u)}" data-h="1">隠す</button>`}</td></tr>`}).join('')||'<tr><td>まだ記録がありません</td></tr>';
+    document.querySelectorAll('[data-u]').forEach(b=>b.onclick=async()=>{try{const a=await auth();const u=b.dataset.u;
+      const r=await fetch(DBU+'/imo/hidden/'+u+'.json?auth='+encodeURIComponent(a.token),{method:b.dataset.h==='1'?'PUT':'DELETE',body:b.dataset.h==='1'?'true':undefined});
+      if(!r.ok)throw new Error('変更できませんでした（imo_admin/uid にこの画面のIDが入っているか確認）');load()}catch(e){msg.textContent=e.message}});
+  }catch(e){msg.textContent=e.message}}
+document.getElementById('reload').onclick=load;load();
+</script>
+</body>
+</html>

@@ -39,7 +39,21 @@ button.s{flex:1;height:46px;border:none;border-radius:12px;background:#5a4a33;co
 .note{font-size:11px;color:#b9ab8c;margin:6px 0 0;line-height:1.6}
 .big{font-size:56px;font-weight:bold;color:#f5d66a}.big small{font-size:22px;margin-left:4px}
 .cnt{font-size:18px;margin:4px 0}.nb{color:#7fe08a;font-weight:bold;margin:4px 0}
+#rpbar{position:absolute;left:0;right:0;top:56px;display:flex;justify-content:center;align-items:center;gap:10px;z-index:4;pointer-events:none}
+#rpbar[hidden]{display:none}
+#rpname{background:rgba(200,40,40,.85);color:#fff;font-weight:bold;font-size:14px;padding:5px 12px;border-radius:20px}
+#rpstop{pointer-events:auto;border:none;border-radius:20px;padding:6px 14px;font-weight:bold;font-family:inherit;background:#fff;color:#333}
+.rk .tbl{max-height:52vh;overflow:auto;margin:8px 0 12px;border-radius:10px;background:rgba(0,0,0,.25)}
+.rk table{width:100%;border-collapse:collapse;font-size:14px}
+.rk td{padding:7px 6px;border-bottom:1px solid rgba(255,255,255,.08);text-align:center}
+.rk td.nm{text-align:left;word-break:break-all}.rk td small{color:#e8dcc0}
+.rk tr.me{background:rgba(245,214,106,.18)}
+.rk a{color:#8fc6ff;font-size:12px;text-decoration:none}
+.rk button.pv{flex:none;width:40px;height:34px;font-size:14px}
+.ent{background:rgba(0,0,0,.25);border-radius:10px;padding:10px;margin:10px 0}
+.ent input{width:100%;height:42px;border-radius:10px;border:none;padding:0 12px;font-size:16px;margin-bottom:8px;font-family:inherit;-webkit-user-select:text;user-select:text}
 </style>
+<script src="config.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
@@ -47,6 +61,7 @@ button.s{flex:1;height:46px;border:none;border-radius:12px;background:#5a4a33;co
 <div id="app">
   <div id="stage"><canvas id="gl"></canvas><canvas id="ui"></canvas></div>
   <div id="ctl"><button id="bSal">敬礼</button><button id="bEat">食べる</button></div>
+  <div id="rpbar" hidden><span id="rpname"></span><button id="rpstop">やめる</button></div>
   <div id="ov"></div>
 </div>
 <script>
@@ -64,7 +79,8 @@ const CFG={
   lookMin:1.0, lookMax:1.8, turnTime:0.15,
   saluteGrace:0.2, askDelay:0.6, pressPerBite:4, mashGap:0.15,
   // [はじめ, 60秒の終わり]
-  awayMin:[2.2,1.1], awayMax:[4.2,2.4], warn:[.6,.35], mash:[2.0,1.5]
+  awayMin:[2.2,1.1], awayMax:[4.2,2.4], warn:[.6,.35], mash:[2.0,1.5],
+  fever:5, feverEvery:10   // コンボ10ごとに芋祭り（教官が5秒居眠り）
 };
 function dv(k,t){const T=CFG.diff.t,V=CFG.diff[k];if(t<=T[0])return V[0];for(let i=1;i<T.length;i++){if(t<=T[i]){const p=(t-T[i-1])/(T[i]-T[i-1]);return V[i-1]+(V[i]-V[i-1])*p}}return V[V.length-1]}
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
@@ -77,10 +93,10 @@ if(!window.THREE||!THREE.GLTFLoader){ov.innerHTML='<div class="box"><h2>読み�
 // ===== 操作（敬礼は一度押すと「食べる」を押すまで続く） =====
 const inp={eat:false,sal:false};let mashEdge=false,salLatch=false;
 const held={eat:new Set()},keys={eat:false};
-function sync(){inp.eat=held.eat.size>0||keys.eat;inp.sal=salLatch;bEat.classList.toggle('on',inp.eat);bSal.classList.toggle('on',salLatch)}
+function sync(){if(g&&g.replay)return;inp.eat=held.eat.size>0||keys.eat;inp.sal=salLatch;bEat.classList.toggle('on',inp.eat);bSal.classList.toggle('on',salLatch)}
 function clearAll(){held.eat.clear();keys.eat=false;sync()}
-function pressSal(){initAudio();salLatch=true;sync()}
-function pressEat(){initAudio();salLatch=false;mashEdge=true;sync()}
+function pressSal(){initAudio();if(g&&g.replay)return;salLatch=true;sync()}
+function pressEat(){initAudio();if(g&&g.replay)return;salLatch=false;mashEdge=true;sync()}
 bSal.addEventListener('pointerdown',e=>{e.preventDefault();pressSal()});
 bEat.addEventListener('pointerdown',e=>{e.preventDefault();try{bEat.setPointerCapture(e.pointerId)}catch(_){}held.eat.add(e.pointerId);pressEat()});
 ['pointerup','pointercancel','lostpointercapture'].forEach(n=>bEat.addEventListener(n,e=>{held.eat.delete(e.pointerId);sync()}));
@@ -90,8 +106,8 @@ addEventListener('touchend',e=>{if(e.touches.length===0){held.eat.clear();sync()
 addEventListener('blur',clearAll);
 document.addEventListener('dblclick',e=>e.preventDefault());
 const KE=['KeyJ','ArrowRight','Space'],KS=['KeyF','ArrowLeft'];
-addEventListener('keydown',e=>{if(KE.includes(e.code)){e.preventDefault();if(!e.repeat){keys.eat=true;pressEat()}}else if(KS.includes(e.code)){e.preventDefault();if(!e.repeat)pressSal()}});
-addEventListener('keyup',e=>{if(KE.includes(e.code)){keys.eat=false;sync()}});
+addEventListener('keydown',e=>{if(e.target&&e.target.tagName==='INPUT')return;if(KE.includes(e.code)){e.preventDefault();if(!e.repeat){keys.eat=true;pressEat()}}else if(KS.includes(e.code)){e.preventDefault();if(!e.repeat)pressSal()}});
+addEventListener('keyup',e=>{if(e.target&&e.target.tagName==='INPUT')return;if(KE.includes(e.code)){keys.eat=false;sync()}});
 
 // ===== 音 =====
 let ac=null,nbuf=null;
@@ -108,7 +124,9 @@ const SE={
   slap:()=>{noise(.25,2500,.9,'highpass');tone(160,.4,'sawtooth',.2,50)},
   down:()=>{tone(400,.3,'triangle',.2,200);setTimeout(()=>tone(260,.5,'triangle',.2,90),280)},
   mash:()=>tone(200+Math.random()*80,.05,'square',.06),
-  salute:()=>tone(520,.06,'square',.06)
+  salute:()=>tone(520,.06,'square',.06),
+  achi:()=>{tone(900,.08,'square',.08,1400);noise(.08,3000,.15)},
+  fever:()=>{[660,880,990,1320].forEach((f,i)=>setTimeout(()=>tone(f,.12,'triangle',.15),i*90))}
 };
 
 
@@ -142,10 +160,22 @@ function bindBgm(){const b=document.getElementById('bgm');if(b)b.onclick=()=>{BG
 
 // ===== ゲームの中身 =====
 let mode='title',g=null;
-function makeState(){const seed=(Date.now()^Math.floor(Math.random()*4294967296))>>>0;rnd=mulberry32(seed);
-  return{seed,frame:0,t:0,left:CFG.roundTime,count:0,combo:0,maxCombo:0,lives:CFG.lives,stun:0,potato:0,mouth:0,autoSw:0,chewT:0,
+// 芋の種類（出やすさ w は合計100）
+const POT={
+  normal:{name:'芋',pts:1,tm:1,w:70},
+  yaki:{name:'焼き芋',pts:3,tm:2.5,w:12},
+  hoshi:{name:'干し芋',pts:1,tm:.5,w:10},
+  atsu:{name:'熱々の芋',pts:2,tm:1,w:5},
+  kin:{name:'金の芋',pts:5,tm:1.5,w:3}};
+const RANKS=[[0,'二等兵'],[3,'一等兵'],[6,'上等兵'],[10,'兵長'],[14,'伍長'],[18,'軍曹'],[22,'曹長'],[26,'少尉'],[30,'大尉'],[35,'少佐'],[40,'大佐'],[50,'芋将軍']];
+function rankOf(n){let r=RANKS[0][1];for(const [k,v] of RANKS)if(n>=k)r=v;return r}
+function pickPotato(){let r=rnd()*100;for(const k in POT){if((r-=POT[k].w)<0)return k}return 'normal'}
+
+function makeState(seed){if(seed==null)seed=(Date.now()^Math.floor(Math.random()*4294967296))>>>0;rnd=mulberry32(seed);
+  return{seed,frame:0,t:0,left:CFG.roundTime,count:0,combo:0,maxCombo:0,lives:CFG.lives,stun:0,potato:0,ptype:'normal',achi:1,mouth:0,autoSw:0,chewT:0,
     ins:{st:'away',timer:1.8,feint:false,angry:false,dbl:false,force:false,paceT:0,paceDir:1,z:0},look:{grace:0,ask:0,asked:false,autoSal:false},
-    q:null,bubbles:[],floats:[],dead:null,deadT:0,fly:null,newBest:false,rec:[],lastK:-1}}
+    cw:{st:'idle',timer:12+rnd()*5},catchKind:'punch',
+    q:null,bubbles:[],floats:[],dead:null,deadT:0,fly:null,newBest:false,rec:[],lastK:-1,replay:null}}
 function say(who,text,dur,opt){g.bubbles=g.bubbles.filter(b=>b.who!==who);g.bubbles.push(Object.assign({who,text,t:dur},opt||{}))}
 const P=()=>Math.min(1,g.t/CFG.roundTime);
 const lerp=(a,b)=>a+(b-a)*P();
@@ -153,17 +183,22 @@ function speed(){return 1+Math.min(g.combo,CFG.comboCap)*CFG.comboStep}
 function startQ(){g.q={need:Math.max(1,Math.ceil(g.mouth*CFG.pressPerBite)),got:0,t:0,last:-1,limit:lerp(CFG.mash[0],CFG.mash[1]),m0:g.mouth};g.look.autoSal=true;breakCombo();say('ins','口に何かあるか？',99);say('pl','……！！',99)}
 function breakCombo(){if(g.combo>=2)g.floats.push({text:'コンボ切れ…',dy:0,t:1,c:'#ccc'});g.combo=0}
 const CAUGHT={eat:'貴様ァ！何を食っている！！',salute:'敬礼はどうしたァ！！',mash:'飲み込めんのかァ！！'};
+const KIND_TXT={pinch:'このほっぺは何だァ！！',pushup:'腕立て伏せ10回ィ！！'};
 function caught(r){
   g.lives--;breakCombo();g.q=null;g.mouth=0;g.autoSw=0;
   const I=g.ins;I.angry=true;I.st='look';I.timer=1.8;I.z=0;g.look={grace:99,ask:99,asked:true,autoSal:true};
-  g.bubbles=[];say('ins',CAUGHT[r],1.8,{red:true});SE.slap();
-  if(g.lives<=0){die(r);return}
-  g.stun=CFG.stun;g.stunR=r;g.floats.push({text:'3秒ロス！',dy:0,t:1.4,c:'#ff8a7a'});
+  g.bubbles=[];SE.slap();
+  if(g.lives<=0){g.catchKind='punch';say('ins',CAUGHT[r],1.8,{red:true});die(r);return}
+  const kr=rnd();g.catchKind=kr<.4?'punch':kr<.7?'pinch':'pushup';
+  say('ins',g.catchKind==='punch'?CAUGHT[r]:KIND_TXT[g.catchKind],1.8,{red:true});
+  if(g.catchKind==='pinch')say('pl','いひゃいれす！',1.6);
+  g.stun=CFG.stun;g.floats.push({text:'3秒ロス！',dy:0,t:1.4,c:'#ff8a7a'});
 }
 function die(r){g.dead=r;g.deadT=0;g.q=null;bgmStop();
   if(r==='time'){g.ins.angry=false;g.bubbles=[];say('ins','そこまで！',2);SE.ok()}
   else{g.ins.st='look';g.ins.angry=true;g.fly={x:0,y:0,vx:-4.5,vy:6.5,r:0}}
   saveBest()}
+function fever(){const I=g.ins;I.st='sleep';I.timer=CFG.fever;I.z=0;I.force=false;I.dbl=false;g.bubbles=g.bubbles.filter(b=>b.who!=='ins');say('ins','Zzz…',CFG.fever);g.floats.push({text:'芋祭り！',dy:0,t:1.6,c:'#ff9de0'});SE.fever()}
 // 教官のつぎの動きを決める
 function nextAction(){
   const I=g.ins,p=P();
@@ -176,11 +211,32 @@ function nextAction(){
   I.feint=a==='feint';I.dbl=a==='double';I.st='warn';I.timer=warn;SE.cough();say('ins','ゴホン',warn+.15,{small:true});
 }
 function awayTime(){return rr(lerp(CFG.awayMin[0],CFG.awayMin[1]),lerp(CFG.awayMax[0],CFG.awayMax[1]))}
+// となりの同僚
+function coworker(dt,eatHeld){
+  const C=g.cw,I=g.ins;C.timer-=dt;
+  if(C.st==='idle'){
+    if(C.timer<=0&&(I.st==='away'||I.st==='pace')&&g.stun<=0){
+      if(eatHeld&&rnd()<.45){C.st='snitch';C.timer=1.4;say('cw','教官！あいつも食べてました！',1.4);
+        if(I.st==='pace'){I.z=0;I.st='away'}I.force=true;I.timer=.4}
+      else if(I.st==='away'&&I.timer>1.2){C.st='eat';C.timer=1.1;say('cw','（もぐもぐ）',1.1)}
+      else C.timer=1;
+    }
+  }else if(C.st==='eat'){
+    if(C.timer<=0){
+      if(I.st==='away'||I.st==='pace'){C.st='hit';C.timer=2.4;I.st='scold';I.timer=2.4;I.z=0;I.force=false;
+        say('ins','そこォ！何を食っとる！！',2.2,{red:true});say('cw','ひぃっ！',1.4);SE.slap();g.floats.push({text:'いまのうち！',dy:0,t:1.6,c:'#8fe39a'})}
+      else{C.st='idle';C.timer=rr(14,20)}
+    }
+  }else if(C.timer<=0){C.st='idle';C.timer=rr(14,20)}
+}
 
 function step(dt){
   if(mode!=='play')return;
-  const e=mashEdge;mashEdge=false;
-  const k=(inp.eat?1:0)|(inp.sal?2:0)|(e?4:0);if(k!==g.lastK){g.rec.push([g.frame,k]);g.lastK=k}g.frame++;
+  let e;
+  if(g.replay){const R=g.replay;while(R.i<R.ev.length&&R.ev[R.i][0]<=g.frame){R.k=R.ev[R.i][1];R.i++}
+    inp.eat=!!(R.k&1);inp.sal=!!(R.k&2);e=!!(R.k&4)}
+  else{e=mashEdge;mashEdge=false;const k=(inp.eat?1:0)|(inp.sal?2:0)|(e?4:0);if(k!==g.lastK){g.rec.push([g.frame,k]);g.lastK=k}}
+  g.frame++;
   for(const b of g.bubbles)b.t-=dt;g.bubbles=g.bubbles.filter(b=>b.t>0);
   for(const f of g.floats){f.t-=dt;f.dy+=40*dt}g.floats=g.floats.filter(f=>f.t>0);
   if(g.dead){g.deadT+=dt;const fl=g.fly;if(fl){fl.x+=fl.vx*dt;fl.y+=fl.vy*dt;fl.vy-=15*dt;fl.r+=7*dt}if(g.deadT>(g.dead==='time'?1.6:2.0))showResult();return}
@@ -196,10 +252,13 @@ function step(dt){
     case 'gwarn':if(I.timer<=0){I.st='glance';I.timer=.55}break;
     case 'glance':if(I.timer<=0){I.st='away';I.timer=awayTime()*.7}break;
     case 'pace':{I.paceT+=dt;I.z=-Math.sin(I.paceT/(I.timer+I.paceT)*Math.PI)*.6;if(I.timer<=0){I.z=0;I.st='away';I.wasPace=true;I.timer=.25}break}
+    case 'scold':if(I.timer<=0){I.st='away';I.timer=awayTime()*.8}break;
+    case 'sleep':if(I.timer<=0){I.st='away';I.timer=.7;say('ins','ハッ！',.8)}break;
   }
 
   if(g.stun>0){g.stun-=dt;return}
   const L=g.look,sal=inp.sal||L.autoSal,eatHeld=inp.eat&&!sal;
+  if(I.st!=='sleep')coworker(dt,eatHeld);
   if(g.q){
     const q=g.q;q.t+=dt;
     if(e&&q.t-q.last>=CFG.mashGap){q.got++;q.last=q.t;SE.mash();g.mouth=q.m0*(1-q.got/q.need);
@@ -212,11 +271,15 @@ function step(dt){
   }else if(I.st==='glance'&&eatHeld){caught('eat');return}
   else if(I.st!=='glance'){
     if(g.autoSw>0){g.autoSw-=dt;g.mouth=Math.max(0,g.mouth-CFG.mouthMax/CFG.autoSwallow*dt)}
-    else if(eatHeld){const sp=speed();
-      g.mouth+=dt/CFG.biteTime*sp;g.potato+=dt/CFG.eatPerPotato*sp;
+    else if(eatHeld){const sp=speed(),pt=POT[g.ptype];
+      g.mouth+=dt/CFG.biteTime*sp;g.potato+=dt/(CFG.eatPerPotato*pt.tm)*sp;
       g.chewT-=dt*sp;if(g.chewT<=0){g.chewT=.22;SE.chew()}
-      if(g.potato>=1){g.potato-=1;g.count++;g.combo++;g.maxCombo=Math.max(g.maxCombo,g.combo);SE.potato();
-        g.floats.push({text:g.combo>=2?'コンボ'+g.combo+'！':'＋1個',dy:0,t:1})}
+      if(g.ptype==='atsu'){g.achi-=dt;if(g.achi<=0){g.achi=rr(.9,1.5);say('pl','アチッ！',.7);SE.achi();
+        if(I.st==='away'||I.st==='pace'){if(I.st==='pace'){I.z=0;I.st='away'}I.force=true;I.timer=Math.min(I.timer,.05)}}}
+      if(g.potato>=1){g.potato=0;g.count+=pt.pts;g.combo++;g.maxCombo=Math.max(g.maxCombo,g.combo);SE.potato();
+        g.floats.push({text:(pt.pts>1?'＋'+pt.pts+'個':'＋1個')+(g.combo>=2?'　コンボ'+g.combo+'！':''),dy:0,t:1,c:g.ptype==='kin'?'#ffe066':null});
+        g.ptype=pickPotato();g.achi=rr(.5,1.2);
+        if(g.combo%CFG.feverEvery===0&&I.st!=='look'&&I.st!=='turn')fever()}
       if(g.mouth>=CFG.mouthMax){g.mouth=CFG.mouthMax;g.autoSw=CFG.autoSwallow/sp;SE.gulp()}
     }else if(g.mouth>0){g.mouth=Math.max(0,g.mouth-dt/CFG.swallowPerBite);if(g.mouth===0)SE.gulp()}
   }
@@ -249,7 +312,7 @@ for(let i=0;i<5;i++){const l=mesh(box(30,.01,.05),M(0xb3935e),0,.005,-1.5+i*1.0)
 function b64ab(s){const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u.buffer}
 const gltfLoader=new THREE.GLTFLoader();
 const parseGLB=k=>new Promise((res,rej)=>gltfLoader.parse(b64ab(MODELS[k]),'',res,rej));
-let ready=false,ins=null,pl=null,CLIPS={},potato=null;
+let ready=false,ins=null,pl=null,mate=null,CLIPS={},potato=null;
 
 // 素体に服を塗る（頭・首・手は肌、足先は黒い靴、ほかは服）
 function dressUp(m,o){
@@ -310,6 +373,14 @@ async function loadModels(){
   pl.sweat=stick(pl,new THREE.Mesh(sph(.016),M(0x7cc4f0)),-.1,.13,.05);
   ins.vein=new THREE.Group();for(const r of[.5,-.5]){const v=mesh(box(.05,.012,.012),M(0xcc2222),0,0,0,ins.vein);v.rotation.z=r}
   stick(ins,ins.vein,-.07,.17,.06);
+  // となりの同僚（もう1人の新兵）
+  const [fem2,buns2]=await Promise.all(['female','buns'].map(parseGLB));
+  mate=makeChar(fem2,{h:1.63,camo:true,cloth:0x66744a,cloth2:0x46512f,pants:0x858457,belt:0x2b2b20,beltY:.53});
+  attachParts(buns2,mate,0x24160d);mate.wE=0;mate.wP=0;
+  const cap2=new THREE.Group();mesh(sph(.105),capM,0,0,0,cap2,1,.55,1.08);mesh(cyl(.104,.108,.07),capM,0,-.03,0,cap2,1,1,1.05);mesh(cyl(.08,.08,.012),M(0x3d4c2c),0,-.055,.1,cap2,1,1,.75);
+  stick(mate,cap2,0,.17,0);
+  mate.pot=mesh(sph(.045),M(0xa8742f),0,0,0,null,1.35,.9,.9);
+  playAct(mate,'Idle_Loop',0);mate.mixer.update(1.3);
   // 芋
   potato=new THREE.Group();scene.add(potato);
   potato.out=mesh(sph(.045),M(0xa8742f),0,0,0,potato,1.35,.9,.9);
@@ -353,57 +424,82 @@ function attention(c,wLeg,wArmR,wArmL){
       l.getWorldPosition(T1);T2.copy(T1).addScaledVector(UP,-.3).addScaledVector(RV,sx*.01).addScaledVector(FW,.02);aimBone(l,h,T2,w)}}
 }
 
+const POTV={normal:{o:0xa8742f,i:0xf5d66a,s:[1.35,.9,.9]},yaki:{o:0x6e2a4f,i:0xf4b942,s:[2.0,1.0,1.0]},hoshi:{o:0xe8a546,i:0xf6c76a,s:[1.6,.35,1.0]},
+  atsu:{o:0xc8552a,i:0xffd36b,s:[1.35,.9,.9],glow:0x551100},kin:{o:0xffcc22,i:0xfff3a0,s:[1.35,.9,.9],glow:0x6a4a00}};
+let potLook='';
+function setPotLook(t){if(potLook===t)return;potLook=t;const v=POTV[t];potato.out.material.color.copy(LC(v.o));potato.inn.material.color.copy(LC(v.i));potato.out.material.emissive.copy(LC(v.glow||0))}
+function poseSalute(c,w){if(w<=.001)return;frame(c);c.bones.upperarm_r.getWorldPosition(SH);
+  EL.copy(SH).addScaledVector(RV,.17).addScaledVector(FW,.12);HD.copy(HW).addScaledVector(RV,.075).addScaledVector(FW,.1).addScaledVector(UP,.09);armIK(c,'r',EL,HD,w)}
+function poseEat(c,w,chew){if(w<=.001)return;frame(c);c.bones.upperarm_l.getWorldPosition(SH);
+  EL.copy(SH).addScaledVector(RV,-.1).addScaledVector(FW,.2).addScaledVector(UP,-.2);HD.copy(HW).addScaledVector(FW,.13).addScaledVector(UP,-.02+chew).addScaledVector(RV,-.03);armIK(c,'l',EL,HD,w)}
+function posePoint(c,w,target){if(w<=.001)return;frame(c);c.bones.upperarm_r.getWorldPosition(SH);
+  _d.copy(target).sub(SH).normalize();EL.copy(SH).addScaledVector(_d,.28).addScaledVector(UP,-.04);HD.copy(SH).addScaledVector(_d,.58);armIK(c,'r',EL,HD,w)}
+const CW_X=-.3,CW_Z=-1.45;
+
 function update3D(dt){
   if(!ready)return;
-  const I=g.ins,d=g.dead,live=mode==='play'&&!d,a=1-Math.exp(-dt*18);
+  const I=g.ins,d=g.dead,live=mode==='play'&&!d,a=1-Math.exp(-dt*18),C=g.cw;
+  const stunE=CFG.stun-g.stun,kind=g.stun>0?g.catchKind:'punch';
   // 教官
   let yaw=AWAY_YAW;
   if(I.st==='look')yaw=LOOK_YAW;
   else if(I.st==='turn'||I.st==='back'){const p=1-Math.max(0,I.timer)/CFG.turnTime,e=p*p*(3-2*p);yaw=I.st==='turn'?AWAY_YAW+(LOOK_YAW-AWAY_YAW)*e:LOOK_YAW+(AWAY_YAW-LOOK_YAW)*e}
   else if(I.st==='glance'){const e=Math.min(1,(.55-I.timer)/.1,I.timer/.1);yaw=AWAY_YAW+(LOOK_YAW-AWAY_YAW)*.55*Math.max(0,e)}
   else if(I.st==='pace'){const ph=I.paceT/(I.timer+I.paceT);yaw=ph<.5?Math.PI:0}
+  else if(I.st==='scold')yaw=Math.atan2(CW_X-INS_X,CW_Z);
   const shk=(I.st==='warn'||I.st==='gwarn')?Math.sin(now*55)*.012:0;
   ins.root.rotation.y=yaw;ins.root.position.set(INS_X+shk,0,I.z||0);
-  const stunE=CFG.stun-g.stun;
-  if(I.angry&&((d&&g.deadT<.55)||(!d&&g.stun>0&&stunE<.55)))playAct(ins,'Punch_Cross',.08,true);
-  else if(I.angry)playAct(ins,'Idle_Talking_Loop',.3);
+  ins.root.rotation.x=I.st==='sleep'?.1+Math.sin(now*1.6)*.03:0;
+  if(I.angry&&kind==='punch'&&((d&&g.deadT<.55)||(!d&&g.stun>0&&stunE<.55)))playAct(ins,'Punch_Cross',.08,true);
+  else if(I.st==='scold'&&I.timer>1.9)playAct(ins,'Punch_Jab',.08,true);
+  else if(I.angry||I.st==='scold')playAct(ins,'Idle_Talking_Loop',.3);
   else if(I.st==='pace')playAct(ins,'Walk_Formal_Loop',.2);
   else if(I.st==='look')playAct(ins,'Idle_Talking_Loop',.2);
   else playAct(ins,'Idle_Loop',.3);
-  ins.U.uFlush.value+=((I.angry?1:0)-ins.U.uFlush.value)*a;
+  ins.U.uFlush.value+=((I.angry||I.st==='scold'?1:0)-ins.U.uFlush.value)*a;
   ins.mixer.update(dt);ins.s0.updateMatrixWorld(true);
-  if(!I.angry&&I.st!=='pace'){const t=I.st==='look'?.35:.9;attention(ins,.9,t,t)}
-  ins.vein.visible=!!I.angry;
+  if(!I.angry&&I.st!=='pace'&&I.st!=='scold'){const t=I.st==='look'?.35:.9;attention(ins,.9,t,t)}
+  ins.vein.visible=!!I.angry||I.st==='scold';
+
+  // となりの同僚
+  {const R=mate.root;R.rotation.y=Math.atan2(INS_X-CW_X,-CW_Z*.4);R.position.set(CW_X,0,CW_Z);
+   const hitC=C.st==='hit'&&C.timer>1.2;
+   if(hitC)playAct(mate,'Hit_Head',.05,true);else playAct(mate,'Idle_Loop',.3);
+   mate.mixer.update(dt);mate.s0.updateMatrixWorld(true);
+   if(!hitC)attention(mate,.9,.9,.9);
+   mate.wE+=((C.st==='eat'?1:0)-mate.wE)*a;mate.wP+=((C.st==='snitch'?1:0)-mate.wP)*a;
+   poseEat(mate,mate.wE,C.st==='eat'?Math.sin(now*16)*.006:0);
+   pl.bones.Head.getWorldPosition(T2);posePoint(mate,mate.wP,T2);
+   mate.bones.hand_l.getWorldPosition(T1);mate.bones.middle_01_l.getWorldPosition(T2);
+   frame(mate);mate.pot.position.copy(T1).lerp(T2,1.3).addScaledVector(FW,.02);mate.pot.visible=mate.wE>.3}
 
   // 新兵
   const ok=live&&g.stun<=0,sal=(ok&&(inp.sal||g.look.autoSal))||d==='time',holdEat=ok&&inp.eat&&!sal&&!g.q,eat=holdEat&&g.autoSw<=0;
   const R=pl.root;R.rotation.y=PL_YAW;R.position.set(PL_X,0,0);R.rotation.x=0;
   if(d&&g.fly){R.position.x+=g.fly.x;R.position.y=Math.max(0,g.fly.y);R.rotation.x=-g.fly.r}
-  const hit=(d&&d!=='time')||(!d&&g.stun>CFG.stun-1.2);
-  if(hit)playAct(pl,'Hit_Head',.05,true);
+  const pushup=!d&&g.stun>0&&kind==='pushup';
+  if(pushup)R.rotation.x=Math.min(1.32,stunE*4)+Math.max(0,Math.sin(now*7))*.09*(stunE>.4?1:0);
+  const hit=(d&&d!=='time')||(!d&&g.stun>CFG.stun-1.2&&kind!=='pushup');
+  if(hit)playAct(pl,kind==='pinch'&&!d?'Hit_Chest':'Hit_Head',.05,true);
   else playAct(pl,'Idle_Loop',.3);
   pl.mixer.update(dt);pl.s0.updateMatrixWorld(true);
   wSal+=((sal?1:0)-wSal)*a;wEat+=((holdEat?1:0)-wEat)*a;
-  if(!hit)attention(pl,.9,.9,.9);
+  if(pushup)attention(pl,0,1,1);else if(!hit)attention(pl,.9,.9,.9);
+  poseSalute(pl,wSal);
+  poseEat(pl,wEat,eat?Math.sin(now*16)*.006:0);
   frame(pl);
-  if(wSal>.001){pl.bones.upperarm_r.getWorldPosition(SH);
-    EL.copy(SH).addScaledVector(RV,.17).addScaledVector(FW,.12).addScaledVector(UP,.0);
-    HD.copy(HW).addScaledVector(RV,.075).addScaledVector(FW,.1).addScaledVector(UP,.09);
-    armIK(pl,'r',EL,HD,wSal)}
-  if(wEat>.001){pl.bones.upperarm_l.getWorldPosition(SH);const chew=eat?Math.sin(now*16)*.006:0;
-    EL.copy(SH).addScaledVector(RV,-.1).addScaledVector(FW,.2).addScaledVector(UP,-.2);
-    HD.copy(HW).addScaledVector(FW,.13).addScaledVector(UP,-.02+chew).addScaledVector(RV,-.03);
-    armIK(pl,'l',EL,HD,wEat)}
   // ほっぺ・汗
-  const bulge=Math.min(1,g.mouth/CFG.mouthMax);
-  pl.cheeks.forEach(c=>{c.visible=bulge>.02&&!d;c.scale.copy(c.userData.s).multiplyScalar(.4+bulge*.9)});
+  const bulge=Math.min(1,g.mouth/CFG.mouthMax),pinch=!d&&g.stun>0&&kind==='pinch';
+  pl.cheeks.forEach(c=>{c.visible=(bulge>.02||pinch)&&!d;c.scale.copy(c.userData.s).multiplyScalar(pinch?1.9+Math.sin(now*20)*.15:.4+bulge*.9)});
   pl.sweat.visible=!!g.q;
   // 芋（左手の指先に持つ）
+  setPotLook(g.ptype);
   pl.bones.hand_l.getWorldPosition(T1);pl.bones.middle_01_l.getWorldPosition(T2);
-  potato.visible=!d||d==='time';potato.position.copy(T1).lerp(T2,1.3).addScaledVector(FW,.02);
+  potato.visible=(!d||d==='time')&&!pushup;potato.position.copy(T1).lerp(T2,1.3).addScaledVector(FW,.02);
   potato.quaternion.setFromAxisAngle(UP,PL_YAW);
-  const ps=1-.5*g.potato;potato.out.scale.set(1.35*ps,.9*ps,.9*ps);potato.inn.visible=g.potato>.02;potato.inn.position.x=-.035*ps;
-  potato.steam.forEach((s,i)=>{const f=(now*.7+i/3)%1;s.position.set(Math.sin(now*4+i*2)*.01,.04+f*.12,0);s.material.opacity=holdEat?.6*(1-f):0});
+  const v=POTV[g.ptype],ps=1-.5*g.potato;potato.out.scale.set(v.s[0]*ps,v.s[1]*ps,v.s[2]*ps);potato.inn.visible=g.potato>.02;potato.inn.position.x=-.035*ps*v.s[0]/1.35;
+  const hot=g.ptype==='atsu';
+  potato.steam.forEach((s,i)=>{const f=(now*(hot?1.4:.7)+i/3)%1;s.position.set(Math.sin(now*4+i*2)*.01,.04+f*.12,0);s.material.opacity=(holdEat||hot)?.6*(1-f):0});
 
   // カメラ
   const tgt=d&&d!=='time'?CAM_A:CAM_N,ca=1-Math.exp(-dt*(d?5:3));
@@ -431,6 +527,8 @@ function drawUI(){
     cx.fillStyle=low?'#ff7a6e':'#fff';cx.font='bold 16px sans-serif';cx.fillText(g.left.toFixed(1)+'秒',60+bw,24);
     cx.fillStyle='#ddd';cx.font='12px sans-serif';cx.fillText('ミス',10,43);for(let i=0;i<CFG.lives;i++){const used=i>=g.lives;cx.fillStyle=used?'#e5483c':'#5a4a33';cx.beginPath();cx.arc(44+i*16,39,5.5,0,7);cx.fill()}
     if(g.combo>=1){cx.textAlign='left';cx.font='bold 15px sans-serif';cx.fillStyle='#f5d66a';cx.strokeStyle='rgba(40,25,5,.9)';cx.lineWidth=3;const ct='コンボ '+g.combo+'　速さ ×'+speed().toFixed(1);cx.strokeText(ct,10,72);cx.fillText(ct,10,72)}
+    if(g.ptype!=='normal'&&!g.dead){const pt=POT[g.ptype];cx.textAlign='left';cx.font='bold 15px sans-serif';cx.fillStyle=g.ptype==='kin'?'#ffe066':g.ptype==='atsu'?'#ff9a6a':'#fff';cx.strokeStyle='rgba(40,25,5,.9)';cx.lineWidth=3;const tt='いまの芋：'+pt.name+'（'+pt.pts+'個分）';cx.strokeText(tt,10,94);cx.fillText(tt,10,94)}
+    if(g.ins.st==='sleep'&&!g.dead){cx.textAlign='center';cx.font='900 30px sans-serif';cx.fillStyle='#ff9de0';cx.strokeStyle='rgba(60,10,40,.9)';cx.lineWidth=5;const ft='芋祭り！ 食べ放題！';cx.strokeText(ft,WL/2,HL*.62);cx.fillText(ft,WL/2,HL*.62)}
     cx.textAlign='right';cx.fillStyle='#f5d66a';cx.font='bold 20px sans-serif';cx.fillText('芋 ×'+g.count,WL-10,44);
     if(g.floats.length&&ready){const[fx,fy]=toUI(pl.bones.Head,.5);cx.textAlign='center';cx.font='bold 20px sans-serif';
       g.floats.forEach((f,i)=>{cx.globalAlpha=Math.min(1,f.t*2);cx.fillStyle=f.c||'#ffdc5a';cx.strokeStyle='rgba(60,40,10,.8)';cx.lineWidth=3;const yy=fy-f.dy+i*24;cx.strokeText(f.text,fx+40,yy);cx.fillText(f.text,fx+40,yy)});cx.globalAlpha=1}
@@ -442,7 +540,7 @@ function drawUI(){
   }
   for(const b of (ready?g.bubbles:[])){
     cx.font=b.small?'bold 13px sans-serif':'bold 15px sans-serif';cx.textAlign='center';
-    const isIns=b.who==='ins';let[x,y]=toUI(isIns?ins.bones.Head:pl.bones.Head,isIns?.5:.42);
+    const isIns=b.who==='ins';let[x,y]=toUI(isIns?ins.bones.Head:b.who==='cw'?mate.bones.Head:pl.bones.Head,isIns?.5:.42);
     if(b.small){x+=34;y+=6}
     const tw=Math.min(WL-12,cx.measureText(b.text).width+24),hh=b.small?26:32;
     const bx=Math.min(Math.max(x,tw/2+6),WL-tw/2-6),by=Math.max(y-hh/2-8,mode==='title'?20:66);
@@ -455,32 +553,104 @@ function drawUI(){
   }
 }
 
+// ===== ランキング（Firebase Realtime Database・無料プラン） =====
+const VER=2;
+const FB=window.IMO_FB||{},NET_OK=!!(FB.apiKey&&FB.databaseURL);
+const DBU=()=>String(FB.databaseURL).replace(/\/$/,'');
+function lsGet(k){try{return JSON.parse(localStorage.getItem(k))}catch(_){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(_){}}
+async function fbAuth(){
+  let a=lsGet('imo_auth');if(a&&a.exp>Date.now()+60000)return a;
+  if(a&&a.refresh){try{const r=await fetch('https://securetoken.googleapis.com/v1/token?key='+FB.apiKey,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'grant_type=refresh_token&refresh_token='+encodeURIComponent(a.refresh)});
+    if(r.ok){const j=await r.json();a={uid:j.user_id,token:j.id_token,refresh:j.refresh_token,exp:Date.now()+(+j.expires_in)*1000};lsSet('imo_auth',a);return a}}catch(_){}}
+  const r=await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key='+FB.apiKey,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({returnSecureToken:true})});
+  if(!r.ok)throw new Error('auth');const j=await r.json();a={uid:j.localId,token:j.idToken,refresh:j.refreshToken,exp:Date.now()+(+j.expiresIn)*1000};lsSet('imo_auth',a);return a;
+}
+async function fbGet(path,q){const r=await fetch(DBU()+path+'.json'+(q||''));if(!r.ok)throw new Error('get '+r.status);return r.json()}
+async function fbPut(path,val,a){const r=await fetch(DBU()+path+'.json?auth='+encodeURIComponent(a.token),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(val)});if(!r.ok)throw new Error('put '+r.status);return r.json()}
+let RANK=null,RANK_AT=0;
+async function loadRanking(force){
+  if(!NET_OK)return null;
+  if(RANK&&!force&&Date.now()-RANK_AT<60000)return RANK;
+  const [sc,hd]=await Promise.all([fbGet('/imo/scores','?orderBy=%22s%22&limitToLast=60'),fbGet('/imo/hidden')]);
+  RANK=Object.entries(sc||{}).filter(([u])=>!(hd&&hd[u])).map(([u,v])=>Object.assign({u},v)).sort((a,b)=>b.s-a.s||a.t-b.t).slice(0,30);RANK_AT=Date.now();return RANK;
+}
+function encRec(rec){let out=[],pf=0;for(const [f,k] of rec){out.push((f-pf).toString(36)+k);pf=f}return out.join('.')}
+function decRec(s){const ev=[];let f=0;if(!s)return ev;for(const t of s.split('.')){f+=parseInt(t.slice(0,-1)||'0',36);ev.push([f,+t.slice(-1)])}return ev}
+const escH=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function canEnter(n){if(!NET_OK||n<=0||g.replay)return false;const sent=lsGet('imo_sent');if(sent!=null&&n<=sent)return false;
+  if(!RANK)return true;return RANK.length<30||n>RANK[RANK.length-1].s}
+async function submitScore(name,xid){
+  const a=await fbAuth(),rec=encRec(g.rec);
+  await fbPut('/imo/replays/'+a.uid,{seed:g.seed,r:rec,v:VER},a);
+  await fbPut('/imo/scores/'+a.uid,{n:name,x:xid,s:g.count,c:g.maxCombo,t:{'.sv':'timestamp'},seed:g.seed,v:VER},a);
+  lsSet('imo_sent',g.count);lsSet('imo_name',name);lsSet('imo_x',xid);await loadRanking(true);
+}
+async function playReplay(u,name){
+  ov.className='';ov.innerHTML='<div class="box"><p>再生を読みこみ中…</p></div>';
+  try{const r=await fbGet('/imo/replays/'+u);if(!r||!r.r)throw new Error('none');
+    clearAll();salLatch=false;g=makeState(r.seed);g.replay={ev:decRec(r.r),i:0,k:0,name:name||''};mode='play';ov.className='hide';initAudio();bgmStart();
+    document.getElementById('rpbar').hidden=false;document.getElementById('rpname').textContent='再生中：'+(name||'')+' さん';
+  }catch(e){ov.innerHTML='<div class="box"><h2>再生できませんでした</h2><button class="main" id="tt2">もどる</button></div>';document.getElementById('tt2').onclick=showRanking}
+}
+async function showRanking(){
+  mode='title';bgmStop();ov.className='';ov.innerHTML='<div class="box"><h2 style="color:#f5d66a">ランキング</h2><p>読みこみ中…</p></div>';
+  let list=null,err=false;try{list=await loadRanking(true)}catch(_){err=true}
+  const me=(lsGet('imo_auth')||{}).uid;
+  const rows=(list||[]).map((r,i)=>`<tr${r.u===me?' class="me"':''}><td>${i+1}</td><td class="nm">${escH(r.n)}${r.x?`<br><a href="https://x.com/${escH(r.x)}" target="_blank" rel="noopener">@${escH(r.x)}</a>`:''}</td><td><b>${r.s}</b>個<br><small>${escH(rankOf(r.s))}</small></td><td><button class="s pv" data-u="${escH(r.u)}" data-n="${escH(r.n)}">▶</button></td></tr>`).join('');
+  ov.innerHTML=`<div class="box rk"><h2 style="color:#f5d66a">ランキング 上位30</h2>
+   ${!NET_OK?'<p>ランキングは準備中です</p>':err?'<p>読みこめませんでした</p>':list.length?`<div class="tbl"><table>${rows}</table></div><p class="note">▶ でその人のプレイを見られます</p>`:'<p>まだ記録がありません</p>'}
+   <button class="main" id="bk">もどる</button></div>`;
+  ov.querySelectorAll('.pv').forEach(b=>b.onclick=()=>playReplay(b.dataset.u,b.dataset.n));
+  document.getElementById('bk').onclick=()=>{g=makeState();showTitle()};
+}
+document.getElementById('rpstop').onclick=()=>{document.getElementById('rpbar').hidden=true;g=makeState();showRanking()};
+
 // ===== 画面の切り替え =====
 const RT={eat:'退場！（つまみ食い）',salute:'退場！（敬礼わすれ）',mash:'退場！（飲み込めず）',time:'そこまで！'};
-function getBest(){try{return JSON.parse(localStorage.getItem('imomusume_best2'))}catch(_){return null}}
-function saveBest(){const b=getBest();g.newBest=!b||g.count>b.c;if(g.newBest){try{localStorage.setItem('imomusume_best2',JSON.stringify({c:g.count,m:g.maxCombo}))}catch(_){}}}
-function bestText(){const b=getBest();return b?`自己ベスト：芋${b.c}個（最大コンボ${b.m}）`:'自己ベスト：まだなし'}
-function start(){clearAll();salLatch=false;sync();g=makeState();mode='play';ov.className='hide';bgmStart()}
+function getBest(){return lsGet('imomusume_best2')}
+function saveBest(){if(g.replay){g.newBest=false;return}const b=getBest();g.newBest=!b||g.count>b.c;if(g.newBest)lsSet('imomusume_best2',{c:g.count,m:g.maxCombo})}
+function bestText(){const b=getBest();return b?`自己ベスト：芋${b.c}個（${rankOf(b.c)}・最大コンボ${b.m}）`:'自己ベスト：まだなし'}
+function start(){clearAll();salLatch=false;sync();document.getElementById('rpbar').hidden=true;g=makeState();mode='play';ov.className='hide';bgmStart()}
 function toTitle(){bgmStop();g=makeState();mode='title';showTitle()}
 function showTitle(){
   ov.className='';
-  ov.innerHTML=`<div class="box"><h1>芋娘</h1><p class="sub">教官の目を盗んで、芋を食べろ！</p>
-  <div class="how">・「食べる」を押している間、芋を食べる<br>　離すと飲み込む（口いっぱいでも自動で飲み込む）<br>・教官が振り向いたら「敬礼」！<br>　一度押せば「食べる」を押すまで敬礼したまま<br>・60秒で何個食べられるか勝負<br>・続けて食べるとコンボで食べる速さアップ（最大2倍）<br>・口に芋が残ったまま見られたら「飲み込む！」を連打（コンボは切れる）<br>・食べているところを見られたら3秒ロス、3回で退場<br>・教官はチラ見・フェイント・2連続振り向きもしてくる</div>
+  ov.innerHTML=`<div class="box"><h1>芋娘</h1><p class="sub">教官の目を盗んで、60秒で芋を食べまくれ！</p>
+  <div class="how">・「食べる」を押している間、芋を食べる（離すと飲み込む）<br>・教官が振り向いたら「敬礼」！（「食べる」を押すまで敬礼したまま）<br>・続けて食べるとコンボで速くなる。コンボ10で芋祭り<br>・口に残ったまま見られたら「飲み込む！」を連打<br>・見つかったら3秒ロス、3回で退場<br>・チラ見・フェイント・2連続・同僚の密告に注意<br>・焼き芋・干し芋・熱々・金の芋も。めざせ芋将軍！</div>
   <button class="main" id="go" ${ready?'':'disabled'}>${ready?'はじめる':'読み込み中…'}</button><p class="best">${bestText()}</p>
-  <div class="row">${bgmBtn()}</div><p class="note">パソコン：F＝敬礼　J＝食べる<br>3Dモデル・動き：Quaternius（CC0）</p></div>`;
+  <div class="row"><button class="s" id="rk">ランキング</button>${bgmBtn()}</div><p class="note">パソコン：F＝敬礼　J＝食べる<br>3Dモデル・動き：Quaternius（CC0）</p></div>`;
   bindBgm();
   document.getElementById('go').onclick=()=>{if(ready){initAudio();start()}};
+  document.getElementById('rk').onclick=()=>{if(ready)showRanking()};
 }
 function showResult(){
   mode='over';ov.className='';
-  const c=g.count,m=g.maxCombo;
-  ov.innerHTML=`<div class="box"><h2>${RT[g.dead]}</h2><div class="big">${c}<small>個</small></div><p class="cnt">最大コンボ ${m}</p>
-  ${g.newBest?'<p class="nb">自己ベスト更新！</p>':''}<p class="best">${bestText()}</p>
-  <button class="main" id="re">もう一度</button><div class="row"><button class="s" id="sh">Xで共有</button><button class="s" id="tt">タイトルへ</button></div><div class="row">${bgmBtn()}</div></div>`;
+  const c=g.count,m=g.maxCombo,rk=rankOf(c),isRp=!!g.replay;
+  document.getElementById('rpbar').hidden=true;
+  ov.innerHTML=`<div class="box"><h2>${isRp?'再生おわり':RT[g.dead]}</h2><div class="big">${c}<small>個</small></div><p class="cnt">階級：<b style="color:#f5d66a">${rk}</b>　最大コンボ ${m}</p>
+  ${isRp?'':(g.newBest?'<p class="nb">自己ベスト更新！</p>':'')+`<p class="best">${bestText()}</p><div id="entry"></div>`}
+  ${isRp?'<button class="main" id="bk2">ランキングへ</button>':'<button class="main" id="re">もう一度</button><div class="row"><button class="s" id="sh">Xで共有</button><button class="s" id="rk2">ランキング</button><button class="s" id="tt">タイトル</button></div>'}<div class="row">${bgmBtn()}</div></div>`;
   bindBgm();
+  if(isRp){document.getElementById('bk2').onclick=()=>{g=makeState();showRanking()};return}
   document.getElementById('re').onclick=()=>{initAudio();start()};
   document.getElementById('tt').onclick=toTitle;
-  document.getElementById('sh').onclick=()=>{const txt=`芋娘で、60秒に芋を${c}個食べた！（最大コンボ${m}）\n#芋娘`;window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(txt)+'&url='+encodeURIComponent(location.href),'_blank')};
+  document.getElementById('rk2').onclick=showRanking;
+  document.getElementById('sh').onclick=()=>{const txt=`芋娘で、60秒に芋を${c}個食べて「${rk}」になった！（最大コンボ${m}）\n#芋娘`;window.open('https://twitter.com/intent/tweet?text='+encodeURIComponent(txt)+'&url='+encodeURIComponent(location.href),'_blank')};
+  // ランクインしたら名前を書いて登録
+  const gg=g;
+  (async()=>{if(!NET_OK||c<=0)return;try{await loadRanking()}catch(_){}
+    if(g!==gg||!canEnter(c))return;const box=document.getElementById('entry');if(!box)return;
+    box.innerHTML=`<div class="ent"><p class="nb">ランキング入り！ 名前を残そう</p>
+      <input id="enm" maxlength="12" placeholder="ニックネーム（12文字まで）" value="${escH(lsGet('imo_name')||'')}">
+      <input id="ex" maxlength="15" placeholder="XのID（なくてもOK・@はいらない）" value="${escH(lsGet('imo_x')||'')}">
+      <button class="main" id="esend" style="height:48px;font-size:18px">登録する</button><p class="note" id="emsg"></p></div>`;
+    document.getElementById('esend').onclick=async()=>{const n=document.getElementById('enm').value.trim().slice(0,12),x=document.getElementById('ex').value.trim().replace(/^@/,'').slice(0,15),msg=document.getElementById('emsg');
+      if(!n){msg.textContent='ニックネームを入れてください';return}
+      if(x&&!/^[A-Za-z0-9_]{1,15}$/.test(x)){msg.textContent='XのIDは英数字と _ だけです';return}
+      document.getElementById('esend').disabled=true;msg.textContent='登録中…';
+      try{await submitScore(n,x);const i=RANK.findIndex(r=>r.u===(lsGet('imo_auth')||{}).uid);box.innerHTML=`<p class="nb">登録しました！${i>=0?`（${i+1}位）`:''}</p>`}
+      catch(e){msg.textContent='登録できませんでした。少し時間をおいてもう一度。';document.getElementById('esend').disabled=false}};
+  })();
 }
 
 // ===== ループ =====
@@ -497,7 +667,7 @@ function loop(ts){
   requestAnimationFrame(loop);
 }
 g=makeState();resize();showTitle();requestAnimationFrame(loop);
-loadModels().then(()=>{if(mode==='title')showTitle()}).catch(e=>{console.error(e);ov.innerHTML='<div class="box"><h2>読み込めませんでした</h2><p>ページを開きなおしてください。</p></div>'});
+loadModels().then(()=>{const rp=new URLSearchParams(location.search).get('replay');if(rp&&NET_OK)playReplay(rp,'');else if(mode==='title')showTitle()}).catch(e=>{console.error(e);ov.innerHTML='<div class="box"><h2>読み込めませんでした</h2><p>ページを開きなおしてください。</p></div>'});
 </script>
 </body>
 </html>

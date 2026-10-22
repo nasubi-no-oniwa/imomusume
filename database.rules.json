@@ -1,0 +1,42 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "imo": {
+      "scores": {
+        ".read": true,
+        ".indexOn": ["s"],
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && newData.exists() && (!data.exists() || (newData.child('s').val() > data.child('s').val() && now - data.child('t').val() > 20000))",
+          ".validate": "newData.hasChildren(['n', 's', 'c', 't', 'seed', 'v'])",
+          "n": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 12" },
+          "x": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_]{0,15}$/)" },
+          "s": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 300" },
+          "c": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 300" },
+          "t": { ".validate": "newData.val() === now" },
+          "seed": { ".validate": "newData.isNumber()" },
+          "v": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      },
+      "replays": {
+        "$uid": {
+          ".read": true,
+          ".write": "auth != null && auth.uid === $uid && newData.exists() && (!root.child('imo/scores/' + $uid).exists() || now - root.child('imo/scores/' + $uid + '/t').val() > 20000)",
+          ".validate": "newData.hasChildren(['seed', 'r', 'v'])",
+          "seed": { ".validate": "newData.isNumber()" },
+          "r": { ".validate": "newData.isString() && newData.val().length <= 40000" },
+          "v": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      },
+      "hidden": {
+        ".read": true,
+        "$uid": {
+          ".write": "auth != null && auth.uid === root.child('imo_admin/uid').val()",
+          ".validate": "newData.val() === true"
+        }
+      }
+    }
+  }
+}
