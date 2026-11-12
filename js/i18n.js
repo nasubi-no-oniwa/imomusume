@@ -883,7 +883,7 @@
   "타이틀"
  ],
  "share_txt": [
-  "芋娘で、60秒に芋を{c}個食べて「{r}」になった！（最大コンボ{m}）\n#芋娘",
+  "芋娘で、60秒に芋を{c}個食べて「{r}」になった！（最大コンボ{m}）\n#芋娘 #ブラウザゲーム",
   "I ate {c} sweet potatoes in 60 seconds in Sweet Potato Girl and made \"{r}\"! (max combo {m})\n#SweetPotatoGirl",
   "我在《地瓜娘》60秒內吃了{c}個地瓜，成為「{r}」！（最大連擊{m}）\n#地瓜娘",
   "고구마 소녀에서 60초 동안 고구마 {c}개를 먹고 \"{r}\"이(가) 됐다! (최대 콤보 {m})\n#고구마소녀"
